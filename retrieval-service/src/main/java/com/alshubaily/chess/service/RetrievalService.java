@@ -1,10 +1,9 @@
 package com.alshubaily.chess.service;
 
-import com.alshubaily.chess.utils.Downloader;
-import com.alshubaily.chess.utils.LichessUrlGenerator;
+import com.alshubaily.chess.utils.retrieval.Downloader;
+import com.alshubaily.chess.utils.retrieval.LichessUrlGenerator;
 import com.alshubaily.chess.utils.s3.ClientProvider;
 import com.alshubaily.chess.utils.s3.Uploader;
-import software.amazon.awssdk.services.s3.model.S3Object;
 
 import java.io.File;
 import java.io.IOException;
@@ -12,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static com.alshubaily.chess.utils.s3.utils.getBucketObjectKeys;
 
@@ -38,9 +36,9 @@ public class RetrievalService {
                 String fileName = url.substring(url.lastIndexOf('/') + 1);
                 File localFile = new File(DOWNLOAD_DIRECTORY, fileName);
 
-                try {
-                    Downloader.downloadToFile(url, localFile.getAbsolutePath());
-                    boolean uploaded = uploader.uploadFile(BUCKET, localFile, ClientProvider.INSTANCE);
+            try {
+                Downloader.downloadToFile(url, localFile.getAbsolutePath());
+                boolean uploaded = uploader.uploadFile(BUCKET, localFile, "", ClientProvider.INSTANCE);
 
                     if (!uploaded) throw new IOException("Upload failed");
 

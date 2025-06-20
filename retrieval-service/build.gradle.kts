@@ -21,6 +21,10 @@ dependencies {
     implementation("software.amazon.awssdk:s3:2.25.13")
     implementation("software.amazon.awssdk:s3-transfer-manager:2.31.65")
 
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
+    implementation("com.github.luben:zstd-jni:1.5.5-10")
+    implementation("org.apache.avro:avro:1.11.3")
+
 }
 
 tasks.test {

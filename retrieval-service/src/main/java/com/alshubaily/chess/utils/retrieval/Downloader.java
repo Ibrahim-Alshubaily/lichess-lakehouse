@@ -1,4 +1,4 @@
-package com.alshubaily.chess.utils;
+package com.alshubaily.chess.utils.retrieval;
 
 import java.io.File;
 import java.io.FileOutputStream;

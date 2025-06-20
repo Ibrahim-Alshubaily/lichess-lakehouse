@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "Game",
+  "namespace": "com.alshubaily.chess.avro",
+  "fields": [
+    { "name": "utc_date", "type": "string" },
+    { "name": "white_elo", "type": "int" },
+    { "name": "black_elo", "type": "int" },
+    { "name": "eco", "type": "string" },
+    { "name": "opening", "type": "string" },
+    { "name": "time_control", "type": "string" },
+    { "name": "termination", "type": "string" },
+    { "name": "event", "type": "string" },
+    { "name": "game_id", "type": "string" },
+    { "name": "moves", "type": "string" },
+    { "name": "outcome", "type": "string" }
+  ]
+}
