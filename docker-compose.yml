@@ -14,5 +14,17 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin123
     command: server /data --console-address ":9001"
 
+  spark:
+    image: apache/spark:3.4.1
+    container_name: spark
+    command: tail -f /dev/null
+    working_dir: /app
+    volumes:
+      - ./ingestion-service/ingest.py:/app/ingest.py:ro
+    environment:
+      - SPARK_HOME=/opt/spark
+    depends_on:
+      - minio
+
 volumes:
   minio_data:
