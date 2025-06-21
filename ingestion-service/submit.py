@@ -57,6 +57,6 @@ conf_args = {
 for k, v in conf_args.items():
     submit_cmd += ["--conf", f"{k}={v}"]
 
-submit_cmd += ["ingest.py", month]
+submit_cmd += ["/app/scripts/ingest.py", month]
 
 subprocess.run(submit_cmd, check=True)
