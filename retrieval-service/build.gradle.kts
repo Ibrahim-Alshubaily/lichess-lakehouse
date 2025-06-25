@@ -25,6 +25,7 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.5.5-10")
     implementation("org.apache.avro:avro:1.11.3")
 
+    implementation("io.github.cdimascio:dotenv-java:3.0.0")
 }
 
 tasks.test {

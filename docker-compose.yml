@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   minio:
@@ -10,36 +10,104 @@ services:
     volumes:
       - minio_data:/data
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
     command: server /data --console-address ":9001"
+    networks:
+      - lakehouse_net
+
+  postgres:
+    image: postgres:14
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
+    volumes:
+      - metastore_db:/var/lib/postgresql/data
+    networks:
+      - lakehouse_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  hive-metastore:
+    image: naushadh/hive-metastore
+    container_name: hive-metastore
+    ports:
+      - "9083:9083"
+    environment:
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: ${POSTGRES_PORT}
+      DATABASE_DB: ${POSTGRES_DB}
+      DATABASE_USER: ${POSTGRES_USER}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      S3_ENDPOINT_URL: ${MINIO_ENDPOINT}
+      S3_BUCKET: ${WAREHOUSE_BUCKET}
+      S3_PREFIX: ""
+      AWS_ACCESS_KEY_ID: ${MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+    depends_on:
+      createbucket:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks:
+      - lakehouse_net
 
   spark:
-    image: apache/spark:3.4.1
+    build:
+      context: .
+      dockerfile: spark/Dockerfile
+    env_file:
+      - .env
     container_name: spark
-    working_dir: /tmp
     volumes:
       - ./ingestion-service/ingest.py:/app/scripts/ingest.py
-    environment:
-      - SPARK_HOME=/opt/spark
     ports:
-      - "10000:10000"  # thrift-server JDBC
+      - "10000:10000"  # Thrift JDBC
     depends_on:
+      - hive-metastore
       - minio
-    command: >
-      bash -c "/opt/spark/sbin/start-thriftserver.sh --master local[*] && tail -f /dev/null"
+    networks:
+      - lakehouse_net
 
   superset:
     build:
       context: .
-      dockerfile: docker/superset.Dockerfile
+      dockerfile: superset/Dockerfile
     container_name: superset
-    environment:
-      SUPERSET_SECRET_KEY: "superset-secret"
     ports:
       - "8088:8088"
     depends_on:
       - spark
+    networks:
+      - lakehouse_net
+
+  createbucket:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local ${MINIO_ENDPOINT} ${MINIO_USER} ${MINIO_PASSWORD}; do sleep 1; done;
+      mc mb -p local/${WAREHOUSE_BUCKET} || true;
+      echo '✅ MinIO bucket created (or already exists)';
+      exit 0;"
+    restart: "no"
+    networks:
+      - lakehouse_net
 
 volumes:
   minio_data:
+  metastore_db:
+
+networks:
+  lakehouse_net:
+    name: lakehouse_net
+    driver: bridge

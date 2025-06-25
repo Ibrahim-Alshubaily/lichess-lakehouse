@@ -1,4 +1,4 @@
-FROM apache/superset:latest
+FROM apache/superset:4.1.2
 
 USER root
 
@@ -10,8 +10,7 @@ RUN apt-get update && \
       thrift-sasl \
       sasl==0.3.1 \
       pure-sasl && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER superset
 

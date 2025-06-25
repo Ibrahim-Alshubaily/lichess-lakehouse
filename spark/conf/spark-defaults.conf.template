@@ -1,0 +1,12 @@
+spark.sql.catalog.iceberg                       org.apache.iceberg.spark.SparkCatalog
+spark.sql.catalog.iceberg.catalog-impl          org.apache.iceberg.hive.HiveCatalog
+spark.sql.catalog.iceberg.uri                   thrift://hive-metastore:9083
+spark.sql.defaultCatalog                        iceberg
+spark.sql.catalog.iceberg.warehouse             s3a://${WAREHOUSE_BUCKET}/
+spark.hadoop.fs.s3a.endpoint                    ${MINIO_ENDPOINT}
+spark.hadoop.fs.s3a.path.style.access           true
+spark.hadoop.fs.s3a.impl                        org.apache.hadoop.fs.s3a.S3AFileSystem
+spark.hadoop.fs.s3a.access.key                  ${MINIO_USER}
+spark.hadoop.fs.s3a.secret.key                  ${MINIO_PASSWORD}
+spark.hadoop.fs.s3a.aws.credentials.provider    org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+spark.driver.extraJavaOptions                   -Duser.home=/tmp
