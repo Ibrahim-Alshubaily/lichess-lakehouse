@@ -1,8 +1,8 @@
 package com.alshubaily.chess.utils.extraction;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.apache.avro.Schema;
+import org.apache.avro.file.CodecFactory;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.file.DataFileWriter;
@@ -17,7 +17,6 @@ public class AvroBatchWriter {
 
     private static final int BATCH_SIZE = 10_000;
     private final PGNStreamIterator source;
-    private final ObjectMapper mapper = new ObjectMapper();
 
     public AvroBatchWriter(PGNStreamIterator source) {
         this.source = source;
@@ -51,12 +50,13 @@ public class AvroBatchWriter {
         String month = utcDate.substring(0, 7).replace('.', '-'); // "2024-05"
 
         Path dir = Path.of("tmp", month);
-        Files.createDirectories(dir);
+        Files.createDirectories(dir); // not good
 
         String fileName = String.format("game-part-%04d.avro", part);
         File file = dir.resolve(fileName).toFile();
 
         try (DataFileWriter<GenericRecord> writer = new DataFileWriter<>(new GenericDatumWriter<>())) {
+            writer.setCodec(CodecFactory.snappyCodec());
             writer.create(schema, file);
             for (GenericRecord record : records) {
                 writer.append(record);

@@ -24,6 +24,7 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
     implementation("com.github.luben:zstd-jni:1.5.5-10")
     implementation("org.apache.avro:avro:1.11.3")
+    implementation("org.xerial.snappy:snappy-java:1.1.10.1")
 
     implementation("io.github.cdimascio:dotenv-java:3.0.0")
 }
