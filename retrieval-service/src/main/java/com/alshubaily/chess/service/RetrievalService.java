@@ -1,5 +1,6 @@
 package com.alshubaily.chess.service;
 
+import com.alshubaily.chess.utils.kafka.Producer;
 import com.alshubaily.chess.utils.retrieval.Downloader;
 import com.alshubaily.chess.utils.retrieval.LichessUrlGenerator;
 import com.alshubaily.chess.utils.s3.ClientProvider;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
+import static com.alshubaily.chess.utils.kafka.Config.SOURCE_TOPIC;
 import static com.alshubaily.chess.utils.s3.utils.getBucketObjectKeys;
 
 public class RetrievalService {
@@ -21,7 +23,7 @@ public class RetrievalService {
 
     public void run() {
         Uploader uploader = new Uploader();
-
+        Producer kafkaProducer = new Producer(SOURCE_TOPIC);
         try {
             Files.createDirectories(Path.of(DOWNLOAD_DIRECTORY));
 
@@ -40,23 +42,27 @@ public class RetrievalService {
                 Downloader.downloadToFile(url, localFile.getAbsolutePath());
                 boolean uploaded = uploader.uploadFile(BUCKET, localFile, "", ClientProvider.INSTANCE);
 
-                    if (!uploaded) throw new IOException("Upload failed");
+                if (!uploaded) throw new IOException("Upload failed");
 
-                    if (localFile.delete()) {
-                        System.out.println("✅ Uploaded and deleted: " + fileName);
-                    } else {
-                        System.err.println("⚠️ Uploaded but failed to delete: " + fileName);
-                    }
-                } catch (Exception e) {
-                    System.err.println("❌ Failed on " + fileName + ": " + e.getMessage());
-                    break;
+                kafkaProducer.send(localFile.getName());
+
+                if (localFile.delete()) {
+                    System.out.println("✅ Uploaded and deleted: " + fileName);
+                } else {
+                    System.err.println("⚠️ Uploaded but failed to delete: " + fileName);
                 }
+            } catch (Exception e) {
+                System.err.println("❌ Retrieval failed on " + fileName + ": " + e.getMessage());
+                break;
             }
+        }
 
-            System.out.println("🏁 Retrieval complete.");
+        System.out.println("🏁 Retrieval complete.");
 
         } catch (Exception e) {
-            System.err.println("❌ Retrieval setup failed: " + e.getMessage());
+            System.err.println("❌ Retrieval failed: " + e.getMessage());
+        } finally {
+            kafkaProducer.close();
         }
     }
 }

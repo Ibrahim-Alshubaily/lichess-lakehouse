@@ -2,11 +2,13 @@ package com.alshubaily.chess.service;
 
 import com.alshubaily.chess.utils.extraction.AvroBatchWriter;
 import com.alshubaily.chess.utils.extraction.PGNStreamIterator;
+import com.alshubaily.chess.utils.kafka.Config;
+import com.alshubaily.chess.utils.kafka.Observer;
+import com.alshubaily.chess.utils.kafka.Producer;
 import com.alshubaily.chess.utils.s3.ClientProvider;
 import com.alshubaily.chess.utils.s3.Uploader;
 import com.alshubaily.chess.utils.s3.utils;
 import com.github.luben.zstd.ZstdInputStream;
-import org.apache.avro.Schema;
 import software.amazon.awssdk.core.async.AsyncResponseTransformer;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Object;
@@ -14,10 +16,10 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
+
+import static com.alshubaily.chess.utils.kafka.Config.INGEST_TOPIC;
 
 public class ExtractionService {
 
@@ -25,8 +27,44 @@ public class ExtractionService {
     private static final String OUTPUT_BUCKET = "processed-data";
 
     private final Uploader uploader = new Uploader();
+    private final Producer producer = new Producer(INGEST_TOPIC);
 
-    public void run() {
+    public void startAsync() {
+        Observer consumer = new Observer(Config.SOURCE_TOPIC);
+        consumer.register(this::process);
+        consumer.start();
+        Runtime.getRuntime().addShutdownHook(new Thread(consumer::close));
+        Runtime.getRuntime().addShutdownHook(new Thread(producer::close));
+    }
+
+    private void process(String key) {
+        GetObjectRequest req = GetObjectRequest.builder()
+                .bucket(INPUT_BUCKET)
+                .key(key)
+                .build();
+
+        var client = ClientProvider.INSTANCE;
+        try (
+                InputStream stream = client.getObject(req, AsyncResponseTransformer.toBlockingInputStream()).get();
+                ZstdInputStream decompressed = new ZstdInputStream(stream);
+                PGNStreamIterator iterator = new PGNStreamIterator(decompressed)
+        ) {
+            AvroBatchWriter writer = new AvroBatchWriter(iterator);
+            List<File> parts = writer.writeBatches();
+
+            String month = extractMonthFromKey(key);
+            for (File part : parts) {
+                uploader.uploadFile(OUTPUT_BUCKET, part, month + "/", client);
+                Files.deleteIfExists(part.toPath());
+            }
+            producer.send(month);
+            System.out.println("✅ Extracted and uploaded: " + key);
+        } catch (Exception e) {
+            System.err.println("❌ Extraction failed: " + e.getMessage());
+        }
+    }
+
+    public void drive() {
         try {
             var client = ClientProvider.INSTANCE;
 
@@ -47,28 +85,7 @@ public class ExtractionService {
                 }
 
                 System.out.println("Processing: " + key);
-
-                GetObjectRequest req = GetObjectRequest.builder()
-                        .bucket(INPUT_BUCKET)
-                        .key(key)
-                        .build();
-
-                InputStream stream = client.getObject(req, AsyncResponseTransformer.toBlockingInputStream()).get();
-
-                try (
-                        ZstdInputStream decompressed = new ZstdInputStream(stream);
-                        PGNStreamIterator iterator = new PGNStreamIterator(decompressed)
-                ) {
-                    AvroBatchWriter writer = new AvroBatchWriter(iterator);
-                    List<File> parts = writer.writeBatches();
-
-                    for (File part : parts) {
-                        uploader.uploadFile(OUTPUT_BUCKET, part, month + "/", client);
-                        Files.deleteIfExists(part.toPath());
-                    }
-
-                    System.out.println("✅ Extracted and uploaded: " + key);
-                }
+                process(key);
             }
             System.out.println("🏁 Extraction complete.");
         } catch (Exception e) {

@@ -27,6 +27,9 @@ dependencies {
     implementation("org.xerial.snappy:snappy-java:1.1.10.1")
 
     implementation("io.github.cdimascio:dotenv-java:3.0.0")
+
+    implementation("org.apache.kafka:kafka-clients:3.7.0")
+
 }
 
 tasks.test {

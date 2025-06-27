@@ -2,8 +2,12 @@ import os
 import subprocess
 import boto3
 from dotenv import load_dotenv
+import sys
 
 load_dotenv()
+
+source_data_path = sys.argv[1]
+
 
 S3_ENDPOINT = "http://localhost:9000"
 S3_ACCESS_KEY = os.environ["MINIO_USER"]
@@ -22,9 +26,6 @@ try:
 except s3.exceptions.BucketAlreadyOwnedByYou:
     pass
 
-# import sys
-# month = sys.argv[1]
-# input_path = f"s3a://processed-data/{month}/"
 
 cmd = [
     "docker",
@@ -34,7 +35,7 @@ cmd = [
     "--master",
     "local[*]",
     "/app/scripts/ingest.py",
-    "s3a://processed-data/",
+    source_data_path,
 ]
 
 subprocess.run(cmd, check=True)
