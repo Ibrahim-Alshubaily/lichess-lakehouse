@@ -18,14 +18,14 @@ import static com.alshubaily.chess.utils.s3.utils.getBucketObjectKeys;
 
 public class RetrievalService {
 
-    private static final String DOWNLOAD_DIRECTORY = "retrieval-service/data/";
+    public static final String DATA_DIRECTORY = "retrieval-service/data/";
     private static final String BUCKET = "source-data";
 
     public void run() {
         Uploader uploader = new Uploader();
         Producer kafkaProducer = new Producer(SOURCE_TOPIC);
         try {
-            Files.createDirectories(Path.of(DOWNLOAD_DIRECTORY));
+            Files.createDirectories(Path.of(DATA_DIRECTORY));
 
             List<String> urls = LichessUrlGenerator.generateUrls();
             Set<String> existingFiles = getBucketObjectKeys(BUCKET, ClientProvider.INSTANCE);
@@ -36,7 +36,7 @@ public class RetrievalService {
 
             for (String url : urls) {
                 String fileName = url.substring(url.lastIndexOf('/') + 1);
-                File localFile = new File(DOWNLOAD_DIRECTORY, fileName);
+                File localFile = new File(DATA_DIRECTORY, fileName);
 
             try {
                 Downloader.downloadToFile(url, localFile.getAbsolutePath());
@@ -53,6 +53,7 @@ public class RetrievalService {
                 }
             } catch (Exception e) {
                 System.err.println("❌ Retrieval failed on " + fileName + ": " + e.getMessage());
+                e.printStackTrace();
                 break;
             }
         }

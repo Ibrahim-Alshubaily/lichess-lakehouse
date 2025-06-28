@@ -23,6 +23,8 @@ public class IngestionService {
 
         scheduler.scheduleAtFixedRate(this::flushBuffer, 1,
                 BUFFER_DURATION.toMinutes(), TimeUnit.MINUTES);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
 
     private void flushBuffer() {

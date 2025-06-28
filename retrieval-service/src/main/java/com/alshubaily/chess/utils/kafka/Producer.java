@@ -19,16 +19,18 @@ public class Producer {
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
-        props.put("batch.size", "1048576"); // 1 MB
-        props.put("linger.ms", "3000");
-        props.put("acks", "0");
-
         this.producer = new KafkaProducer<>(props);
     }
 
     public void send(String value) {
         ProducerRecord<String, String> record = new ProducerRecord<>(topic, null, value);
-        producer.send(record);
+        producer.send(record, (_, exception) -> {
+            if (exception != null) {
+                System.err.println("❌ Failed to publish to " + topic + ": " + exception.getMessage());
+            } else {
+                System.out.println("📤 Published to " + topic + ": " + value);
+            }
+        });
     }
 
     public void close() {

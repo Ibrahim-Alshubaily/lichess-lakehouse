@@ -1,7 +1,5 @@
 package com.alshubaily.chess.utils.extraction;
 
-import com.alshubaily.chess.utils.StringUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -9,18 +7,23 @@ import org.apache.avro.generic.GenericRecord;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class PGNStreamIterator implements Iterator<GenericRecord>, Closeable {
 
+
     private static final String SCHEMA_PATH = "retrieval-service/schema/game.avsc";
-
-    private static final int MIN_ELO = 2000;
-    private static final List<String> SELECTED_FIELDS = List.of(
-            "WhiteElo", "BlackElo", "ECO", "Opening",
-            "TimeControl", "Termination", "Event"
+    private static final Pattern MOVE_PATTERN = Pattern.compile(
+            "\\b(?:O-O(?:-O)?|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRNB])?)\\b"
     );
+    private static final DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy.MM.dd");
 
+    private static final Map<String, String> entries = new HashMap<>();
     private final BufferedReader reader;
     private final Schema schema;
     private GenericRecord nextRecord;
@@ -45,7 +48,6 @@ public class PGNStreamIterator implements Iterator<GenericRecord>, Closeable {
 
     private void advance() {
         try {
-            Map<String, String> entries = new HashMap<>();
             String line;
 
             while ((line = reader.readLine()) != null) {
@@ -60,13 +62,7 @@ public class PGNStreamIterator implements Iterator<GenericRecord>, Closeable {
                     }
                 } else if (line.startsWith("1.")) {
                     entries.put("moves", line);
-
-                    if (!isEligible(entries)) {
-                        entries.clear();
-                        continue;
-                    }
-
-                    nextRecord = buildRecord(entries);
+                    nextRecord = buildRecord();
                     return;
                 }
             }
@@ -79,11 +75,11 @@ public class PGNStreamIterator implements Iterator<GenericRecord>, Closeable {
         }
     }
 
-    private boolean isEligible(Map<String, String> entries) {
-        return parseElo(entries.get("WhiteElo")) > MIN_ELO &&
-                parseElo(entries.get("BlackElo")) > MIN_ELO &&
-                entries.get("Result").matches("(1-0|0-1|1/2-1/2)");
-    }
+//    private boolean isEligible(Map<String, String> entries) {
+//        return parseElo(entries.get("WhiteElo")) > MIN_ELO &&
+//                parseElo(entries.get("BlackElo")) > MIN_ELO &&
+//                entries.get("Result").matches("(1-0|0-1|1/2-1/2)");
+//    }
 
     private int parseElo(String elo) {
         try {
@@ -102,31 +98,56 @@ public class PGNStreamIterator implements Iterator<GenericRecord>, Closeable {
         };
     }
 
-    private String parseMoves(String moves) {
-        StringBuilder cleaned = new StringBuilder();
-        for (String token : moves.split("\\s+")) {
-            if (!token.matches("\\d+\\.")) {
-                cleaned.append(token).append(" ");
-            }
+    private List<String> parseMoves(String moves) {
+        if (moves == null || moves.isEmpty()) return Collections.emptyList();
+
+        List<String> parsed = new ArrayList<>();
+        Matcher matcher = MOVE_PATTERN.matcher(moves);
+        while (matcher.find()) {
+            parsed.add(matcher.group());
         }
-        return cleaned.toString().replaceFirst("(1-0|0-1|1/2-1/2)$", "").trim();
+        return parsed;
     }
 
-    private GenericRecord buildRecord(Map<String, String> entries) {
+    private int parseDate(String yyyymmdd) {
+        try {
+            LocalDate date = LocalDate.parse(yyyymmdd, dateFormatter);
+            return (int) ChronoUnit.DAYS.between(LocalDate.ofEpochDay(0), date);
+        } catch (Exception e) {
+            System.err.println("Failed to parse date: " + yyyymmdd);
+            return 0;
+        }
+    }
+
+    private int[] parseTimeControl(String timeControl) {
+        if (timeControl == null || !timeControl.contains("+")) return new int[] {0, 0};
+        try {
+            String[] parts = timeControl.split("\\+");
+            return new int[] {Integer.parseInt(parts[0]), Integer.parseInt(parts[1])};
+        } catch (Exception e) {
+            return new int[] {0, 0};
+        }
+    }
+
+    private GenericRecord buildRecord() {
         GenericRecord record = new GenericData.Record(schema);
 
-        for (String field : SELECTED_FIELDS) {
-            String key = StringUtils.toSnakeCase(field);
-            record.put(key, entries.get(field));
-        }
-
         record.put("game_id", extractGameId(entries.get("Site")));
-        record.put("moves", parseMoves(entries.get("moves")));
-        record.put("outcome", parseOutcome(entries.get("Result")));
+        record.put("utc_date", parseDate(entries.get("UTCDate")));
         record.put("white_elo", parseElo(entries.get("WhiteElo")));
         record.put("black_elo", parseElo(entries.get("BlackElo")));
-        record.put("utc_date", entries.get("UTCDate"));
+        record.put("eco", entries.get("ECO"));
+        record.put("opening", entries.get("Opening"));
 
+        String timeControl = entries.get("TimeControl");
+        int[] timeParts = parseTimeControl(timeControl);
+        record.put("init_sec", timeParts[0]);
+        record.put("inc_sec", timeParts[1]);
+
+        record.put("termination", entries.get("Termination"));
+        record.put("event", entries.get("Event"));
+        record.put("outcome", parseOutcome(entries.get("Result")));
+        record.put("moves", parseMoves(entries.get("moves")));
         return record;
     }
 

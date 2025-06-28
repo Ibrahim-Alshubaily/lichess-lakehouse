@@ -2,7 +2,6 @@ package com.alshubaily.chess.service;
 
 import com.alshubaily.chess.utils.extraction.AvroBatchWriter;
 import com.alshubaily.chess.utils.extraction.PGNStreamIterator;
-import com.alshubaily.chess.utils.kafka.Config;
 import com.alshubaily.chess.utils.kafka.Observer;
 import com.alshubaily.chess.utils.kafka.Producer;
 import com.alshubaily.chess.utils.s3.ClientProvider;
@@ -16,10 +15,13 @@ import software.amazon.awssdk.services.s3.model.S3Object;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
+import static com.alshubaily.chess.service.RetrievalService.DATA_DIRECTORY;
 import static com.alshubaily.chess.utils.kafka.Config.INGEST_TOPIC;
+import static com.alshubaily.chess.utils.kafka.Config.SOURCE_TOPIC;
 
 public class ExtractionService {
 
@@ -27,14 +29,13 @@ public class ExtractionService {
     private static final String OUTPUT_BUCKET = "processed-data";
 
     private final Uploader uploader = new Uploader();
+    private final Observer consumer = new Observer(SOURCE_TOPIC);
     private final Producer producer = new Producer(INGEST_TOPIC);
 
     public void startAsync() {
-        Observer consumer = new Observer(Config.SOURCE_TOPIC);
         consumer.register(this::process);
         consumer.start();
-        Runtime.getRuntime().addShutdownHook(new Thread(consumer::close));
-        Runtime.getRuntime().addShutdownHook(new Thread(producer::close));
+        Runtime.getRuntime().addShutdownHook(new Thread(this::close));
     }
 
     private void process(String key) {
@@ -49,18 +50,23 @@ public class ExtractionService {
                 ZstdInputStream decompressed = new ZstdInputStream(stream);
                 PGNStreamIterator iterator = new PGNStreamIterator(decompressed)
         ) {
-            AvroBatchWriter writer = new AvroBatchWriter(iterator);
-            List<File> parts = writer.writeBatches();
 
             String month = extractMonthFromKey(key);
+            Path dir = Path.of(DATA_DIRECTORY, month);
+            Files.createDirectories(dir);
+
+            AvroBatchWriter writer = new AvroBatchWriter(iterator);
+            List<File> parts = writer.writeBatches(dir);
             for (File part : parts) {
                 uploader.uploadFile(OUTPUT_BUCKET, part, month + "/", client);
-                Files.deleteIfExists(part.toPath());
+                part.delete();
             }
             producer.send(month);
             System.out.println("✅ Extracted and uploaded: " + key);
+            Files.deleteIfExists(dir);
         } catch (Exception e) {
             System.err.println("❌ Extraction failed: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -111,4 +117,9 @@ public class ExtractionService {
         // TODO: make month extraction atomic.
         return Set.copyOf(months.subList(0, months.size() - 1)); // drop last (might be partially completed)
     }
+
+    private void close() {
+        producer.close();
+    }
+
 }
